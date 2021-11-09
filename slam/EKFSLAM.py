@@ -197,23 +197,21 @@ class EKFSLAM:
         m = eta[3:].reshape((-1, 2)).T
 
         Rot = rotmat2d(-x[2])
+        Rot_pos = rotmat2d(x[2])
 
         # None as index ads an axis with size 1 at that position.
         # Numpy broadcasts size 1 dimensions to any size when needed
-        delta_m = np.zeros_like(m)
+        #delta_m = np.zeros_like(m)
         zpred_r = np.zeros_like(m[0]) 
         zpred_theta = np.zeros_like(m[0])
+        L_off = Rot_pos @ self.sensor_offset
 
         for i in range(np.size(m[1])):
-
-            delta_m[:,i] = m[:,i]-x[0:2]-Rot@ self.sensor_offset  # TODO, relative position of landmark to sensor on robot in world frame
-
-            # TODO, predicted measurements in cartesian coordinates, beware sensor offset for VP
-            zpredcart = Rot @ delta_m
+            delta_m = m[:,i]-x[0:2]- L_off  # TODO, relative position of landmark to sensor on robot in world frame
+                        
+            zpredcart = Rot @ delta_m # TODO, predicted measurements in cartesian coordinates, beware sensor offset for VP
             zpred_r[i] = np.linalg.norm(zpredcart[0:2], 2)  # TODO, ranges
-            print(np.arctan2(zpredcart[1], zpredcart[0]))
-            #zpred_theta[i] = np.arctan2(zpredcart[1], zpredcart[0])  # TODO, bearings
-
+            zpred_theta[i] = np.arctan2(zpredcart[1], zpredcart[0])  # TODO, bearings
 
         print(" delta_m" , delta_m)
         print(" zpred_r" , zpred_r)
