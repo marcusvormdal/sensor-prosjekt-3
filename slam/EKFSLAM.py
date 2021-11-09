@@ -34,13 +34,19 @@ class EKFSLAM:
             the predicted state
         """
         # TODO replace this with your own code
-        xpred = solution.EKFSLAM.EKFSLAM.f(self, x, u)
-        return xpred
+
+        x_k = x[0] + u[0] * np.cos(x[2]) - u[1]*np.sin(x[2])
+        y_k = x[1] + u[0] * np.sin(x[2]) + u[1]*np.cos(x[2])
+        phi_k = x[2] + u[2]
+
+        xpred = np.array([x_k, y_k, phi_k])
+        #xpred = solution.EKFSLAM.EKFSLAM.f(self, x, u)
 
         # TODO, eq (11.7). Should wrap heading angle between (-pi, pi), see utils.wrapToPi
-        xpred = None
+        xpred[2] = utils.wrapToPi(xpred[2])
 
         return xpred
+        
 
     def Fx(self, x: np.ndarray, u: np.ndarray) -> np.ndarray:
         """Calculate the Jacobian of f with respect to x.
@@ -58,10 +64,12 @@ class EKFSLAM:
             The Jacobian of f wrt. x.
         """
         # TODO replace this with your own code
-        Fx = solution.EKFSLAM.EKFSLAM.Fx(self, x, u)
-        return Fx
+        Fx = np.identity(3)
+        Fx[0,2] = -u[0]*np.sin(x[2])-u[1]*np.cos(x[2])
+        Fx[1,2] = u[0]*np.cos(x[2])-u[1]*np.sin(x[2])
+        
 
-        Fx = None  # TODO, eq (11.13)
+        #Fx = solution.EKFSLAM.EKFSLAM.Fx(self, x, u)
 
         return Fx
 
@@ -81,10 +89,13 @@ class EKFSLAM:
             The Jacobian of f wrt. u.
         """
         # TODO replace this with your own code
-        Fu = solution.EKFSLAM.EKFSLAM.Fu(self, x, u)
-        return Fu
+        #Fu = solution.EKFSLAM.EKFSLAM.Fu(self, x, u)
 
-        Fu = None  # TODO, eq (11.14)
+        Fu = np.array([
+            [np.cos(x[2]),   -np.sin(x[2]), 0],
+            [np.sin(x[2]),   np.cos(x[2]),  0],
+            [0,              0,             1]])
+        
 
         return Fu
 
@@ -107,8 +118,6 @@ class EKFSLAM:
         Tuple[np.ndarray, np.ndarray], shapes= (3 + 2*#landmarks,), (3 + 2*#landmarks,)*2
             predicted mean and covariance of eta.
         """
-        etapred, P = solution.EKFSLAM.EKFSLAM.predict(self, eta, P, z_odo)
-        return etapred, P
 
         # check inout matrix
         assert np.allclose(P, P.T), "EKFSLAM.predict: not symmetric P input"
@@ -121,20 +130,38 @@ class EKFSLAM:
         etapred = np.empty_like(eta)
 
         x = eta[:3]
-        etapred[:3] = None  # TODO robot state prediction
-        etapred[3:] = None  # TODO landmarks: no effect
+        etapred[:3] = self.f(x, z_odo)  # TODO robot state prediction
+        etapred[3:] =eta[3:]  # TODO landmarks: no effect
 
-        Fx = None  # TODO
-        Fu = None  # TODO
+        Fx = self.Fx(x, z_odo)  # TODO
+        Fu = self.Fu(x, z_odo)  # TODO
 
         # evaluate covariance prediction in place to save computation
         # only robot state changes, so only rows and colums of robot state needs changing
         # cov matrix layout:
         # [[P_xx, P_xm],
         # [P_mx, P_mm]]
-        P[:3, :3] = None  # TODO robot cov prediction
-        P[:3, 3:] = None  # TODO robot-map covariance prediction
-        P[3:, :3] = None  # TODO map-robot covariance: transpose of the above
+        
+        if np.shape(P[0])[0] > 3:
+            G = np.vstack([np.identity(3), np.zeros([(np.shape(P[0])[0]-3), 3])])
+        else:
+            G = np.identity(3)
+
+        Q =  Fu @ self.Q @ Fu.T
+
+        F = Fx
+        # TODO robot cov prediction
+        # TODO robot-map covariance prediction
+        # TODO map-robot covariance: transpose of the above
+        if np.shape(P[0])[0] > 3:
+            F = np.identity(np.shape(P[0])[0])
+            F[:3, :3] = Fx
+
+            #P[:3, 3:] = F @ P[:3, 3:] @ F.T #+ G @ self.Q @ G.T  
+            #P[3:, :3] = F @ P[3:, :3] @ F.T #+ G @ self.Q @ G.T  
+        P= F @ P @ F.T + G @ Q @ G.T
+
+        #etapred_old, P = solution.EKFSLAM.EKFSLAM.predict(self, eta, P, z_odo)
 
         assert np.allclose(P, P.T), "EKFSLAM.predict: not symmetric P"
         assert np.all(
@@ -144,7 +171,10 @@ class EKFSLAM:
             etapred.shape * 2 == P.shape
         ), "EKFSLAM.predict: calculated shapes does not match"
 
+
         return etapred, P
+
+
 
     def h(self, eta: np.ndarray) -> np.ndarray:
         """Predict all the landmark positions in sensor frame.
@@ -160,9 +190,6 @@ class EKFSLAM:
             The landmarks in the sensor frame.
         """
 
-        # TODO replace this with your own code
-        zpred = solution.EKFSLAM.EKFSLAM.h(self, eta)
-        return zpred
 
         # extract states and map
         x = eta[0:3]
@@ -173,14 +200,25 @@ class EKFSLAM:
 
         # None as index ads an axis with size 1 at that position.
         # Numpy broadcasts size 1 dimensions to any size when needed
-        delta_m = None  # TODO, relative position of landmark to sensor on robot in world frame
+        delta_m = np.zeros_like(m)
+        zpred_r = np.zeros_like(m[0]) 
+        zpred_theta = np.zeros_like(m[0])
 
-        # TODO, predicted measurements in cartesian coordinates, beware sensor offset for VP
-        zpredcart = None
+        for i in range(np.size(m[1])):
 
-        zpred_r = None  # TODO, ranges
-        zpred_theta = None  # TODO, bearings
-        zpred = None  # TODO, the two arrays above stacked on top of each other vertically like
+            delta_m[:,i] = m[:,i]-x[0:2]-Rot@ self.sensor_offset  # TODO, relative position of landmark to sensor on robot in world frame
+
+            # TODO, predicted measurements in cartesian coordinates, beware sensor offset for VP
+            zpredcart = Rot @ delta_m
+            zpred_r[i] = np.linalg.norm(zpredcart[0:2], 2)  # TODO, ranges
+            print(np.arctan2(zpredcart[1], zpredcart[0]))
+            #zpred_theta[i] = np.arctan2(zpredcart[1], zpredcart[0])  # TODO, bearings
+
+
+        print(" delta_m" , delta_m)
+        print(" zpred_r" , zpred_r)
+        print(" zpred_theta" ,zpred_theta )
+        zpred = np.vstack([zpred_r, zpred_theta])  # TODO, the two arrays above stacked on top of each other vertically like
         # [ranges;
         #  bearings]
         # into shape (2, #lmrk)
@@ -191,6 +229,8 @@ class EKFSLAM:
         assert (
             zpred.ndim == 1 and zpred.shape[0] == eta.shape[0] - 3
         ), "SLAM.h: Wrong shape on zpred"
+        
+        #zpred = solution.EKFSLAM.EKFSLAM.h(self, eta)
 
         return zpred
 
