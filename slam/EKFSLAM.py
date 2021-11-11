@@ -1,3 +1,4 @@
+from os import error
 from typing import Tuple
 import numpy as np
 from numpy import ndarray
@@ -103,7 +104,7 @@ class EKFSLAM:
         self, eta: np.ndarray, P: np.ndarray, z_odo: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Predict the robot state using the zOdo as odometry the corresponding state&map covariance.
-
+        
         Parameters
         ----------
         eta : np.ndarray, shape=(3 + 2*#landmarks,)
@@ -338,7 +339,7 @@ class EKFSLAM:
         # TODO: You can set some assertions here to make sure that some of the structure in H is correct
         
         #H = solution.EKFSLAM.EKFSLAM.h_jac(self, eta)
-        print(H)
+        #print(H)
         return H
 
     def add_landmarks(
@@ -492,20 +493,33 @@ class EKFSLAM:
             [description]
         """
         # TODO replace this with your own code
-        etaupd, Pupd, NIS, a = solution.EKFSLAM.EKFSLAM.update(self, eta, P, z)
-        return etaupd, Pupd, NIS, a
-
+        
         numLmk = (eta.size - 3) // 2
         assert (len(eta) - 3) % 2 == 0, "EKFSLAM.update: landmark lenght not even"
-
+        
+        etaupd_old, Pupd_old, NIS_old, a_old = solution.EKFSLAM.EKFSLAM.update(self, eta, P, z)
+        
         if numLmk > 0:
             # Prediction and innovation covariance
-            zpred = None  # TODO
-            H = None  # TODO
-
+            zpred = self.h(eta)  # TODO
+            H = self.h_jac(eta)  # TODO
+            #etapred, Ppred = self.predict(eta, P, z)
+            etapred = eta
+            Ppred = P
             # Here you can use simply np.kron (a bit slow) to form the big (very big in VP after a while) R,
             # or be smart with indexing and broadcasting (3d indexing into 2d mat) realizing you are adding the same R on all diagonals
-            S = None  # TODO,
+            gauss_r = self.R[0,0]
+            gauss_theta = self.R[1,1]
+
+            k_size = np.shape(H)[0]
+            K_prod = np.zeros([k_size,k_size])
+
+            for i in range(int(k_size/2)):
+                K_prod[i*2,i*2] = gauss_r
+                K_prod[(i*2)+1, (i*2)+1] = gauss_theta
+                                
+            S = H @ Ppred @ H.T + K_prod  # TODO
+            #print("S", S)
             assert (
                 S.shape == zpred.shape * 2
             ), "EKFSLAM.update: wrong shape on either S or zpred"
@@ -525,20 +539,25 @@ class EKFSLAM:
                 v[1::2] = utils.wrapToPi(v[1::2])
 
                 # Kalman mean update
-                # S_cho_factors = la.cho_factor(Sa) # Optional, used in places for S^-1, see scipy.linalg.cho_factor and scipy.linalg.cho_solve
-                W = None  # TODO, Kalman gain, can use S_cho_factors
-                etaupd = None  # TODO, Kalman update
+                #S_cho_factors = la.cho_factor(Sa) # Optional, used in places for S^-1, see scipy.linalg.cho_factor and scipy.linalg.cho_solve
+                #s_cho = la.cho_solve(S_cho_factors)
+    
+                W = Ppred @ Ha.T @ np.linalg.inv(Sa)  # TODO, Kalman gain, can use S_cho_factors
+                etaupd = etapred + W @ v  # TODO, Kalman update
 
                 # Kalman cov update: use Joseph form for stability
                 jo = -W @ Ha
-                # same as adding Identity mat
+                # same as adding Identity mat (np.identity(np.shape(Ppred)[0]) - W @ Ha)
                 jo[np.diag_indices(jo.shape[0])] += 1
-                Pupd = None  # TODO, Kalman update. This is the main workload on VP after speedups
-
+                Pupd = jo @ Ppred # TODO, Kalman update. This is the main workload on VP after speedups
                 # calculate NIS, can use S_cho_factors
-                NIS = None  # TODO
+                NIS = v.T @ np.linalg.inv(Sa) @ v  # TODO
 
                 # When tested, remove for speed
+                #for i in range(np.shape(Pupd)[0]):
+                    #print("Pupd", Pupd[i])
+                    #print("PupdT", Pupd.T[i])
+
                 assert np.allclose(
                     Pupd, Pupd.T), "EKFSLAM.update: Pupd not symmetric"
                 assert np.all(
@@ -560,14 +579,25 @@ class EKFSLAM:
                 z_new_inds[::2] = is_new_lmk
                 z_new_inds[1::2] = is_new_lmk
                 z_new = z[z_new_inds]
-                etaupd, Pupd = None  # TODO, add new landmarks.
+                
+                etaupd, Pupd = self.add_landmarks(etaupd, Pupd, z_new)  # TODO, add new landmarks.
 
         assert np.allclose(
             Pupd, Pupd.T), "EKFSLAM.update: Pupd must be symmetric"
         assert np.all(np.linalg.eigvals(Pupd) >=
                       0), "EKFSLAM.update: Pupd must be PSD"
-
-        return etaupd, Pupd, NIS, a
+        
+        
+        for i in range(np.shape(etaupd)[0]):
+                    print("etaupd", etaupd[i])
+                    print("etaupd_old", etaupd_old[i])
+        for i in range(np.shape(Pupd)[0]):
+                    print("Pupd", Pupd[i])
+                    print("Pupdold", Pupd_old[i])
+       
+        
+        
+        return etaupd, Pupd, NIS_old, a
 
     @classmethod
     def NEESes(cls, x: np.ndarray, P: np.ndarray, x_gt: np.ndarray,) -> np.ndarray:
