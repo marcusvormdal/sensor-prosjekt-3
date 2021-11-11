@@ -213,9 +213,9 @@ class EKFSLAM:
             zpred_r[i] = np.linalg.norm(zpredcart[0:2], 2)  # TODO, ranges
             zpred_theta[i] = np.arctan2(zpredcart[1], zpredcart[0])  # TODO, bearings
 
-        print(" delta_m" , delta_m)
-        print(" zpred_r" , zpred_r)
-        print(" zpred_theta" ,zpred_theta )
+        #print(" delta_m" , delta_m)
+        #print(" zpred_r" , zpred_r)
+        #  print(" zpred_theta" ,zpred_theta )
         zpred = np.vstack([zpred_r, zpred_theta])  # TODO, the two arrays above stacked on top of each other vertically like
         # [ranges;
         #  bearings]
@@ -245,8 +245,7 @@ class EKFSLAM:
         np.ndarray, shape=(2 * #landmarks, 3 + 2 * #landmarks)
             the jacobian of h wrt. eta.
         """
-        H = solution.EKFSLAM.EKFSLAM.h_jac(self, eta)
-        return H
+        
 
         # extract states and map
         x = eta[0:3]
@@ -256,19 +255,30 @@ class EKFSLAM:
         numM = m.shape[1]
 
         Rot = rotmat2d(x[2])
-
+        L_off = Rot @ self.sensor_offset
+        delta_m = np.empty_like(m)
         # TODO, relative position of landmark to robot in world frame. m - rho that appears in (11.15) and (11.16)
-        delta_m = None
+        for i in range(np.size(m[1])):
+            delta_m[:,i] = m[:,i]-x[0:2]
+        
 
         # TODO, (2, #measurements), each measured position in cartesian coordinates like
-        zc = None
+        zc = np.empty_like(m)
+        for i in range(np.size(m[1])):
+            zc[:,i] = m[:,i]-x[0:2]- L_off
+            
+
         # [x coordinates;
         #  y coordinates]
 
-        zpred = None  # TODO (2, #measurements), predicted measurements, like
+        zpred = self.h(eta) # TODO (2, #measurements), predicted measurements, like
         # [ranges;
         #  bearings]
-        zr = None  # TODO, ranges
+        
+        # TODO, ranges
+        zr = np.array([])
+        for i in range(int(np.size(zpred)/2)):
+            zr = np.append(zr, zpred[i*2])
 
         Rpihalf = rotmat2d(np.pi / 2)
 
@@ -286,14 +296,49 @@ class EKFSLAM:
         # proposed way is to go through landmarks one by one
         # preallocate and update this for some speed gain if looping
         jac_z_cb = -np.eye(2, 3)
+        
+        #print(hm_1)
         for i in range(numM):  # But this whole loop can be vectorized
             ind = 2 * i  # starting postion of the ith landmark into H
             # the inds slice for the ith landmark into H
             inds = slice(ind, ind + 2)
 
+            delta_m_i = np.array([delta_m[0][i], delta_m[1][i]]).T
+            #print("mi", delta_m_i)
+
+            r_elem = -Rpihalf @ delta_m_i
+            #print("r_elem", r_elem)
+            jac_z_cb[0,2]  = r_elem[0]
+            jac_z_cb[1,2] = r_elem[1]
+            #print(zc)
+            #print("zr", zr)
+            zc_elem = np.array([zc[0][i],zc[1][i]]).T
+            
+            hx_1 = (zc_elem * (1/zr[i])) @ jac_z_cb
+
+            hx_2 = ((zc_elem @ Rpihalf.T ) / (zr[i]**2)) @ jac_z_cb     
+            
+            hm_1 =  (zc_elem.T / (zr[i]))
+            
+            hm_2 = (zc_elem.T @ Rpihalf.T) / (zr[i]**2)
+            
+            Hx[ind] = hx_1
+            Hx[ind+1] = hx_2
+            Hm[ind][ind:(2+ind)] = hm_1
+            Hm[ind+1][ind:(2+ind)] = hm_2
+
+
+
+
+
+
+
             # TODO: Set H or Hx and Hm here
 
         # TODO: You can set some assertions here to make sure that some of the structure in H is correct
+        
+        #H = solution.EKFSLAM.EKFSLAM.h_jac(self, eta)
+        print(H)
         return H
 
     def add_landmarks(
