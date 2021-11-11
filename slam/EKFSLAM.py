@@ -497,7 +497,7 @@ class EKFSLAM:
         numLmk = (eta.size - 3) // 2
         assert (len(eta) - 3) % 2 == 0, "EKFSLAM.update: landmark lenght not even"
         
-        etaupd_old, Pupd_old, NIS_old, a_old = solution.EKFSLAM.EKFSLAM.update(self, eta, P, z)
+        #etaupd_old, Pupd_old, NIS_old, a_old = solution.EKFSLAM.EKFSLAM.update(self, eta, P, z)
         
         if numLmk > 0:
             # Prediction and innovation covariance
@@ -597,7 +597,7 @@ class EKFSLAM:
        
         
         
-        return etaupd, Pupd, NIS_old, a
+        return etaupd, Pupd, NIS, a
 
     @classmethod
     def NEESes(cls, x: np.ndarray, P: np.ndarray, x_gt: np.ndarray,) -> np.ndarray:
