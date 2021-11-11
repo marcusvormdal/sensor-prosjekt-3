@@ -88,12 +88,12 @@ def main():
     #
     ##
     z = [zk.T for zk in simSLAM_ws["z"].ravel()]
-
+    
     landmarks = simSLAM_ws["landmarks"].T
     odometry = simSLAM_ws["odometry"].T
     poseGT = simSLAM_ws["poseGT"].T
 
-    K = len(z)
+    K = int(len(z) /10)
     M = len(landmarks)
 
     # %% Initilize
@@ -148,11 +148,11 @@ def main():
         # See top: need to do "double indexing" to get z at time step k
         # Transpose is to stack measurements rowwise
         # z_k = z[k][0].T
-
-        eta_hat[k], P_hat[k], NIS[k], a[k] =  # TODO update
+       
+        eta_hat[k], P_hat[k], NIS[k], a[k] = slam.update(eta_pred[k], P_pred[k],z_k)  # TODO update
 
         if k < K - 1:
-            eta_pred[k + 1], P_pred[k + 1] =  # TODO predict
+            eta_pred[k + 1], P_pred[k + 1] = slam.predict(eta_hat[k],P_hat[k], odometry[k]) # TODO predict
 
         assert (
             eta_hat[k].shape[0] == P_hat[k].shape[0]
@@ -168,9 +168,13 @@ def main():
         else:
             NISnorm[k] = 1
             CInorm[k].fill(1)
-
-        NEESes[k] =  # TODO, use provided function slam.NEESes
-
+        if k != 0:
+            #print("pose",poseGT[k].T)
+            #print(P_hat[k])
+            NEESes[k] = slam.NEESes(eta_hat[k][0:3], P_hat[k][0:3,0:3], poseGT[k]) # TODO, use provided function slam.NEESes
+        else:
+            pass
+        
         if doAssoPlot and k > 0:
             axAsso.clear()
             axAsso.grid()
