@@ -93,7 +93,7 @@ def main():
     odometry = simSLAM_ws["odometry"].T
     poseGT = simSLAM_ws["poseGT"].T
 
-    K = len(z)
+    K = int(len(z) /10)
     M = len(landmarks)
 
     # %% Initilize
@@ -124,7 +124,7 @@ def main():
     NEESes = np.zeros((K, 3))
 
     # For consistency testing
-    alpha = 0.95
+    alpha = 0.05
 
     # init
     eta_pred[0] = poseGT[0]  # we start at the correct position for reference
@@ -148,15 +148,8 @@ def main():
         # See top: need to do "double indexing" to get z at time step k
         # Transpose is to stack measurements rowwise
         # z_k = z[k][0].T
-        if k == 0:
-            eta_hat[k] = eta_pred[0]
-            P_hat[k] = np.eye(3)
-            a[k] = 0
-            NIS[k] = 0
-            #print("zk", z_k.T)
-
-        else:
-            eta_hat[k], P_hat[k], NIS[k], a[k] = slam.update(eta_hat[k-1], P_hat[k-1],z_k)  # TODO update
+       
+        eta_hat[k], P_hat[k], NIS[k], a[k] = slam.update(eta_pred[k], P_pred[k],z_k)  # TODO update
 
         if k < K - 1:
             eta_pred[k + 1], P_pred[k + 1] = slam.predict(eta_hat[k],P_hat[k], odometry[k]) # TODO predict
