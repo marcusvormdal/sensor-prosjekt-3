@@ -539,10 +539,10 @@ class EKFSLAM:
                 v[1::2] = utils.wrapToPi(v[1::2])
 
                 # Kalman mean update
-                #S_cho_factors = la.cho_factor(Sa) # Optional, used in places for S^-1, see scipy.linalg.cho_factor and scipy.linalg.cho_solve
-                #s_cho = la.cho_solve(S_cho_factors)
-    
-                W = Ppred @ Ha.T @ np.linalg.inv(Sa)  # TODO, Kalman gain, can use S_cho_factors
+                S_cho_factors = la.cho_factor(Sa) # Optional, used in places for S^-1, see scipy.linalg.cho_factor and scipy.linalg.cho_solve
+                s_cho = la.cho_solve(S_cho_factors, np.eye(np.shape(Sa)[0]))
+
+                W = Ppred @ Ha.T @ s_cho  # TODO, Kalman gain, can use S_cho_factors
                 etaupd = etapred + W @ v  # TODO, Kalman update
 
                 # Kalman cov update: use Joseph form for stability
@@ -551,7 +551,7 @@ class EKFSLAM:
                 jo[np.diag_indices(jo.shape[0])] += 1
                 Pupd = jo @ Ppred # TODO, Kalman update. This is the main workload on VP after speedups
                 # calculate NIS, can use S_cho_factors
-                NIS = v.T @ np.linalg.inv(Sa) @ v  # TODO
+                NIS = v.T @ s_cho @ v  # TODO
 
                 # When tested, remove for speed
                 #for i in range(np.shape(Pupd)[0]):
@@ -587,14 +587,14 @@ class EKFSLAM:
         assert np.all(np.linalg.eigvals(Pupd) >=
                       0), "EKFSLAM.update: Pupd must be PSD"
         
-        
+        '''
         for i in range(np.shape(etaupd)[0]):
                     print("etaupd", etaupd[i])
                     print("etaupd_old", etaupd_old[i])
         for i in range(np.shape(Pupd)[0]):
                     print("Pupd", Pupd[i])
                     print("Pupdold", Pupd_old[i])
-       
+       '''
         
         
         return etaupd, Pupd, NIS, a
