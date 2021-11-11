@@ -381,47 +381,42 @@ class EKFSLAM:
         sensor_offset_world_der = rotmat2d(
             eta[2] + np.pi / 2) @ self.sensor_offset  # Used in Gx
 
-        etaadded, Padded = solution.EKFSLAM.EKFSLAM.add_landmarks(
-            self, eta, P, z)
-        print("z", z)
         
-        print("etaadded: ", etaadded)
 
         for j in range(numLmk):
             ind = 2 * j
             inds = slice(ind, ind + 2)
-            zj = z[inds]
-            print("zj", zj)
-            
-            print("eta[:3]", eta[:3])
-            print("sensor_offset_world", sensor_offset_world)
-            print("sensor_offset_world_der", sensor_offset_world_der)
-            print("resultat: ", eta[:1] + rotmat2d(eta[2]) @  zj) + sensor_offset_world_der
-
-            print("h(zj):", self.h(zj))
-            
-            
-            rot = rotmat2d(zj[1] + eta[2])  # TODO, rotmat in Gz
+            zj = z[inds]           
+            rot = rotmat2d(zj[1] + eta[2])  # TODO, rotmat in Gz     
             # TODO, calculate position of new landmark in world frame
-            lmnew[inds] = self.h(zj[0]) + sensor_offset_world
-            
-
+            lmnew[inds] = eta[:2]+zj[0] * rot[:,0]+ sensor_offset_world
             Gx[inds, :2] = I2  # TODO
             #trig = np.array([[-np.sin(zj[1]+eta[2])],[np.cos(zj[1]+eta[2])]])
-            Gx[inds, 2] = zj[0] @ rot[:,1] + sensor_offset_world_der# TODO
-
+            Gx[inds, 2] = zj[0] * rot[:,1] + sensor_offset_world_der# TODO
             Gz = rot @ np.diag([1, zj[0]])  # TODO
-
             # TODO, Gz * R * Gz^T, transform measurement covariance from polar to cartesian coordinates
             Rall[inds, inds] = Gz @ self.R @ Gz.T
 
+        
+        
         assert len(lmnew) % 2 == 0, "SLAM.add_landmark: lmnew not even length"
-        etaadded = [eta.T, lmnew].T  # TODO, append new landmarks to state vector
+        etaadded = np.block([eta, lmnew])  # TODO, append new landmarks to state vector
+        
         # TODO, block diagonal of P_new, see problem text in 1g) in graded assignment 3
-        Padded = np.empty((n+Rall.shape[0], n+Rall.shape[0]))
-        Padded[n:, :n] = P @ Gx.T  # TODO, top right corner of P_new
+    
+        
+        top_left = P         # TODO, top left corner of P_new
+        
+        top_right = Gx @ P[:3,:] # TODO, top right corner of P_new
+        
         # TODO, transpose of above. Should yield the same as calcualion, but this enforces symmetry and should be cheaper
-        Padded[:n, n:] = Gx @ P @ Gx.T + Rall
+        bottom_left = top_right.T
+        
+        
+        bottom_right = Gx @ P[:3,:3] @ Gx.T + Rall
+        
+        Padded = np.block([[top_left, top_right.T],
+                    [bottom_left.T, bottom_right]])
 
         assert (
             etaadded.shape * 2 == Padded.shape
