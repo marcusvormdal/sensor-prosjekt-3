@@ -93,12 +93,12 @@ def main():
     odometry = simSLAM_ws["odometry"].T
     poseGT = simSLAM_ws["poseGT"].T
 
-    K = int(len(z) /10)
+    K = len(z)
     M = len(landmarks)
 
     # %% Initilize
     Q = np.diag([0.1, 0.1, 1 * np.pi / 180]) ** 2  # TODO tune
-    R = np.diag([0.1, 1 * np.pi / 180]) ** 2  # TODO tune
+    R = np.diag([2.1, 3 * np.pi / 180]) ** 2  # TODO tune
 
     # first is for joint compatibility, second is individual
     JCBBalphas = np.array([0.001, 0.0001])  # TODO tune
@@ -110,7 +110,6 @@ def main():
 # or by the size of the association search space.
 
     slam = EKFSLAM(Q, R, do_asso=doAsso, alphas=JCBBalphas)
-
     # allocate
     eta_pred: List[Optional[np.ndarray]] = [None] * K
     P_pred: List[Optional[np.ndarray]] = [None] * K
@@ -124,7 +123,7 @@ def main():
     NEESes = np.zeros((K, 3))
 
     # For consistency testing
-    alpha = 0.05
+    alpha = 0.95
 
     # init
     eta_pred[0] = poseGT[0]  # we start at the correct position for reference
@@ -135,7 +134,7 @@ def main():
     # plotting
 
     doAssoPlot = False
-    playMovie = True
+    playMovie = False
     if doAssoPlot:
         figAsso, axAsso = plt.subplots(num=1, clear=True)
 
@@ -215,13 +214,16 @@ def main():
     # landmarks
     ax2.scatter(*landmarks.T, c="r", marker="^")
     ax2.scatter(*lmk_est_final.T, c="b", marker=".")
+    print("Actual landmarks:", np.shape(landmarks)[0])
+    print("State landmarks:", np.shape(lmk_est_final)[0])
+
     # Draw covariance ellipsis of measurements
     for l, lmk_l in enumerate(lmk_est_final):
         idxs = slice(3 + 2 * l, 3 + 2 * l + 2)
         rI = P_hat[N - 1][idxs, idxs]
         el = ellipse(lmk_l, rI, 5, 200)
         ax2.plot(*el.T, "b")
-
+    print("l",l)
     ax2.plot(*poseGT.T[:2], c="r", label="gt")
     ax2.plot(*pose_est.T[:2], c="g", label="est")
     ax2.plot(*ellipse(pose_est[-1, :2], P_hat[N - 1][:2, :2], 5, 200).T, c="g")

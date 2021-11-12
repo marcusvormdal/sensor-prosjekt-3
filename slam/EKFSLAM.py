@@ -407,7 +407,7 @@ class EKFSLAM:
         
         top_left = P         # TODO, top left corner of P_new
         
-        top_right = Gx @ P[:3,:] # TODO, top right corner of P_new
+        top_right = P[:,:3] @ Gx.T # TODO, top right corner of P_new
         
         # TODO, transpose of above. Should yield the same as calcualion, but this enforces symmetry and should be cheaper
         bottom_left = top_right.T
@@ -415,8 +415,8 @@ class EKFSLAM:
         
         bottom_right = Gx @ P[:3,:3] @ Gx.T + Rall
         
-        Padded = np.block([[top_left, top_right.T],
-                    [bottom_left.T, bottom_right]])
+        Padded = np.block([[top_left, top_right],
+                    [bottom_left, bottom_right]])
 
         assert (
             etaadded.shape * 2 == Padded.shape
