@@ -5,6 +5,9 @@ from typing import List, Optional
 
 from scipy.io import loadmat
 import numpy as np
+import pandas as pd
+import openpyxl
+import time
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -77,6 +80,9 @@ except Exception as e:
 
 def main():
     # %% Load data
+    #for m in range(4,5):
+    #   for n in range(4,10):
+    plt.close('all')
     datafile = Path(__file__).parents[1].joinpath("data/simulatedSLAM")
     simSLAM_ws = loadmat(str(datafile))
 
@@ -97,13 +103,29 @@ def main():
     M = len(landmarks)
 
     # %% Initilize
-    Q = np.diag([0.1, 0.1, 1 * np.pi / 180]) ** 2  # TODO tune
-    R = np.diag([2.1, 3 * np.pi / 180]) ** 2  # TODO tune
+    std_x_y = 20*0.1
+    print('std_x_y', std_x_y)
+    std_vinkel = 30 * np.pi / 180
+    print('std_vinkel', std_vinkel)
+    Q = np.diag([std_x_y, std_x_y,std_vinkel]) ** 2  # TODO tune
+    #(n+1)*10**(m-2)
+    R_r = 10 *0.10
+    print('R_r', R_r)
+    R_vinkel = 10 * 0.5* np.pi / 180
+    print('R_vinkel', R_vinkel)
+    
+    
+    R = np.diag([R_r, R_vinkel]) ** 2  # TODO tune
 
+    joint_compatibility = 10**(-10)*0.001
+    print("join_compatibility", joint_compatibility)
+    individual = 10**(-17)*0.0001
+    print("individual", individual)
     # first is for joint compatibility, second is individual
-    JCBBalphas = np.array([0.001, 0.0001])  # TODO tune
+    JCBBalphas = np.array([joint_compatibility, individual])  # TODO tune
 
     doAsso = True
+    writeToFile = False
 
 
 # these can have a large effect on runtime either through the number of landmarks created
@@ -139,15 +161,17 @@ def main():
         figAsso, axAsso = plt.subplots(num=1, clear=True)
 
     # %% Run simulation
-    N = K
+    N = 1000
+    
 
     print("starting sim (" + str(N) + " iterations)")
-
+    start = time.time()
     for k, z_k in tqdm(enumerate(z[:N]), total=N):
+        
         # See top: need to do "double indexing" to get z at time step k
         # Transpose is to stack measurements rowwise
         # z_k = z[k][0].T
-       
+    
         eta_hat[k], P_hat[k], NIS[k], a[k] = slam.update(eta_pred[k], P_pred[k],z_k)  # TODO update
 
         if k < K - 1:
@@ -191,8 +215,9 @@ def main():
                 f"k = {k}, {np.count_nonzero(a[k] > -1)} associations")
             plt.draw()
             plt.pause(0.001)
-
-    print("sim complete")
+    elapsed_time_fl = (time.time() - start)
+    print("sim complete in ", elapsed_time_fl)
+    
 
     pose_est = np.array([x[:3] for x in eta_hat[:N]])
     lmk_est = [eta_hat_k[3:].reshape(-1, 2) for eta_hat_k in eta_hat]
@@ -240,6 +265,7 @@ def main():
     ax3.plot(CInorm[:N, 0], '--')
     ax3.plot(CInorm[:N, 1], '--')
     ax3.plot(NISnorm[:N], lw=0.5)
+    
 
     ax3.set_title(f'NIS, {insideCI.mean()*100}% inside CI')
 
@@ -249,7 +275,8 @@ def main():
         7, 5), num=4, clear=True, sharex=True)
     tags = ['all', 'pos', 'heading']
     dfs = [3, 2, 1]
-
+    ANEES_list = []
+    CI_ANEES_list = []
     for ax, tag, NEES, df in zip(ax4, tags, NEESes.T, dfs):
         CI_NEES = chi2.interval(alpha, df)
         ax.plot(np.full(N, CI_NEES[0]), '--')
@@ -261,6 +288,8 @@ def main():
         CI_ANEES = np.array(chi2.interval(alpha, df*N)) / N
         print(f"CI ANEES {tag}: {CI_ANEES}")
         print(f"ANEES {tag}: {NEES.mean()}")
+        ANEES_list.append(NEES.mean())
+        CI_ANEES_list.append(CI_ANEES)
 
     fig4.tight_layout()
 
@@ -277,14 +306,48 @@ def main():
 
     errs = np.vstack((pos_err, heading_err))
 
+    RMSE_list = []
     for ax, err, tag, ylabel, scaling in zip(ax5, errs, tags[1:], ylabels, scalings):
         ax.plot(err*scaling)
         ax.set_title(
             f"{tag}: RMSE {np.sqrt((err**2).mean())*scaling} {ylabel}")
+        RMSE_list.append(np.sqrt((err**2).mean())*scaling)
         ax.set_ylabel(f"[{ylabel}]")
         ax.grid()
 
     fig5.tight_layout()
+
+    #to file
+    file = 'excel_R_r_copy.xlsx'
+    
+    if (writeToFile == True):
+        print("Writing to file!")
+        print(file)
+        wb = openpyxl.load_workbook(filename=file)
+        ws = wb['Sheet1']     # Older method was  .get_sheet_by_name('Sheet1')
+        
+        ANEES_all = ANEES_list[0]
+        ANEES_pos = ANEES_list[1]
+        ANEES_heading = ANEES_list[2]
+
+        CI_ANEES_all = CI_ANEES_list[0]
+        CI_ANEES_pos = CI_ANEES_list[1]
+        CI_ANEES_heading = CI_ANEES_list[2]
+
+        RMSE_pos = RMSE_list[0]
+        RMSE_heading = RMSE_list[1]
+
+        ANIS = NISnorm.mean()
+        print("ANIS: ", ANIS)
+        
+        param_changed = 'R_r'
+        print('Param changed:', param_changed)
+        param_value = R_r
+        print('Param value:', param_value)
+        new_row = [ws.max_row, param_changed, param_value, str(elapsed_time_fl), l+1, ANEES_all, CI_ANEES_all[0], CI_ANEES_all[1], ANEES_pos, CI_ANEES_pos[0], CI_ANEES_pos[1], ANEES_heading, CI_ANEES_heading[0], CI_ANEES_heading[1], RMSE_pos, RMSE_heading, ANIS]
+        ws.append(new_row)
+        wb.save(file)
+        wb.close()
 
     # %% Movie time
 

@@ -110,13 +110,13 @@ def main():
 
     car = Car(L, H, a, b)
 
-    sigmas = 0.025 * np.array([0.0001, 0.00005, 6 * np.pi / 180])  # TODO tune
+    sigmas = 2*np.array([0.1, 0.1, 20 * np.pi / 180])  # TODO tune
     CorrCoeff = np.array([[1, 0, 0], [0, 1, 0.9], [0, 0.9, 1]])
     Q = np.diag(sigmas) @ CorrCoeff @ np.diag(sigmas)
-    R = np.diag([0.1, 1 * np.pi / 180]) ** 2  # TODO tune
+    R = np.diag([0.06, 0.25 * np.pi / 180]) ** 2  # TODO tune
 
     # first is for joint compatibility, second is individual
-    JCBBalphas = np.array([0.00001, 1e-6])  # TODO tune
+    JCBBalphas = np.array([0.1*0.0000001, 0.01*1e-6])  # TODO tune
 
     sensorOffset = np.array([car.a + car.L, car.b])
     doAsso = True
@@ -125,7 +125,7 @@ def main():
                    sensor_offset=sensorOffset)
 
     # For consistency testing
-    alpha = 0.95
+    alpha = 0.05
     confidence_prob = 1 - alpha
 
     xupd = np.zeros((mK, 3))
@@ -145,6 +145,7 @@ def main():
     t = timeOdo[0]
 
     # %%  run
+    print("K", K)
     N = 10000  # K
 
     doPlot = False
@@ -163,10 +164,10 @@ def main():
         odos = np.zeros((K, 3))
         odox = np.zeros((K, 3))
         odox[0] = eta
-
+        P_odo = P.copy()
         for k in range(min(N, K - 1)):
             odos[k + 1] = odometry(speed[k + 1], steering[k + 1], 0.025, car)
-            odox[k + 1], _ = slam.predict(odox[k], P, odos[k + 1])
+            odox[k + 1], _ = slam.predict(odox[k], P_odo, odos[k + 1])
 
     for k in tqdm(range(N)):
         if mk < mK - 1 and timeLsr[mk] <= timeOdo[k + 1]:
@@ -241,6 +242,7 @@ def main():
     ax3.plot(CInorm[:mk, 0], "--")
     ax3.plot(CInorm[:mk, 1], "--")
     ax3.plot(NISnorm[:mk], lw=0.5)
+    print("ANIS: ", sum(NISnorm)/len(NISnorm))
 
     ax3.set_title(f"NIS, {insideCI.mean()*100:.2f}% inside CI")
 
